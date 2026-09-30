@@ -11,6 +11,7 @@ from app.worker.handlers import HANDLERS
 
 WORKER_ID = os.getenv("WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}"
 POLL_INTERVAL = 0.5
+CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "5"))
 
 
 def now():
@@ -54,18 +55,33 @@ async def run_job(job_id: str):
         await s.commit()
 
 
+async def handle(job_id: str, sem: asyncio.Semaphore):
+    try:
+        await run_job(job_id)
+        await ack(job_id)
+        print(f"[{WORKER_ID}] done {job_id}", flush=True)
+    except Exception as e:
+        # job stays in queue:processing; the reaper (Step 8) will reclaim it
+        print(f"[{WORKER_ID}] error on {job_id}: {e!r}", flush=True)
+    finally:
+        sem.release()
+
+
 async def main():
-    print(f"[{WORKER_ID}] started", flush=True)
+    print(f"[{WORKER_ID}] started, concurrency={CONCURRENCY}", flush=True)
+    sem = asyncio.Semaphore(CONCURRENCY)
+    tasks: set[asyncio.Task] = set()
     while True:
+        await sem.acquire()                 # wait for a free slot BEFORE claiming
         job_id = await claim()
         if job_id is None:
+            sem.release()
             await asyncio.sleep(POLL_INTERVAL)
             continue
         print(f"[{WORKER_ID}] claimed {job_id}", flush=True)
-        await run_job(job_id)
-        await ack(job_id)          # only after Postgres is updated
-        print(f"[{WORKER_ID}] done {job_id}", flush=True)
-
+        task = asyncio.create_task(handle(job_id, sem))
+        tasks.add(task)                     # keep a reference so it isn't garbage collected
+        task.add_done_callback(tasks.discard)
 
 if __name__ == "__main__":
     asyncio.run(main())
