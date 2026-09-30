@@ -33,5 +33,16 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
 
+  worker:
+    build: .
+    command: python -m app.worker.worker
+    volumes: [".:/code"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jobs:jobs@postgres:5432/jobs
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
 volumes:
   pgdata:
