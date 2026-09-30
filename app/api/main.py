@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from sqlalchemy import text
 
-from app.api.routes_jobs import router as jobs_router
+from app.api.routes_jobs import router as jobs_router, dlq_router
 from app.core.db import engine
 from app.core.redis_client import redis_client
 from app.models.tables import Base
@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Job Queue", lifespan=lifespan)
 app.include_router(jobs_router)
+app.include_router(dlq_router)
 
 @app.get("/health")
 async def health(response: Response):
