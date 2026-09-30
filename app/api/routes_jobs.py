@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.models.tables import Job
+from app.queue.queue import enqueue
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -42,6 +43,7 @@ async def create_job(body: JobCreate, session: AsyncSession = Depends(get_sessio
     session.add(job)
     await session.commit()
     await session.refresh(job)
+    await enqueue(job.id, job.priority)
     return job
 
 
