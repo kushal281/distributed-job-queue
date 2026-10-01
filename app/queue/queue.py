@@ -15,6 +15,7 @@ _requeue = redis_client.register_script((_scripts / "requeue.lua").read_text())
 _promote = redis_client.register_script((_scripts / "promote.lua").read_text())
 _extend = redis_client.register_script((_scripts / "extend.lua").read_text())
 _reap = redis_client.register_script((_scripts / "reap.lua").read_text())
+_recover = redis_client.register_script((_scripts / "recover.lua").read_text())
 
 def make_score(priority: int) -> int:
     return priority * 10**13 + int(time.time() * 1000)
@@ -59,4 +60,13 @@ async def schedule(job_id, delay_ms: int) -> None:
     sec, usec = await redis_client.time()
     now_ms = sec * 1000 + usec // 1000
     await redis_client.zadd(DELAYED, {str(job_id): now_ms + delay_ms})
-    
+
+
+async def now_ms() -> int:
+    sec, usec = await redis_client.time()
+    return sec * 1000 + usec // 1000
+
+
+async def recover_missing(job_id, target: str, score: int) -> int:
+    """1 = job was in no Redis set and has been re-added, 0 = already tracked."""
+    return await _recover(keys=[READY, DELAYED, PROCESSING], args=[str(job_id), target, score])

@@ -13,6 +13,7 @@ from app.queue.queue import ack, claim, requeue, extend
 from app.worker.scheduler import scheduler_loop
 from app.worker.handlers import HANDLERS
 from app.worker.reaper import reaper_loop
+from app.worker.recovery import recovery_loop
 
 WORKER_ID = os.getenv("WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}"
 POLL_INTERVAL = 0.5
@@ -123,6 +124,8 @@ async def main():
     scheduler = asyncio.create_task(scheduler_loop())   # keep a reference
     heartbeat = asyncio.create_task(heartbeat_loop())   # keep a reference
     reaper = asyncio.create_task(reaper_loop())   # keep a reference
+    recovery = asyncio.create_task(recovery_loop())   # keep a reference
+        
     tasks: set[asyncio.Task] = set()
     while True:
         await sem.acquire()                 # wait for a free slot BEFORE claiming
