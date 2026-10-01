@@ -2,6 +2,7 @@ import asyncio
 import os
 import socket
 import uuid
+import time
 from datetime import datetime, timedelta, timezone
 
 from app.core.db import SessionLocal
@@ -86,7 +87,8 @@ async def run_job(job_id: str):
 async def heartbeat_loop():
     while True:
         try:
-            await redis_client.set(f"worker:{WORKER_ID}", "1", ex=HEARTBEAT_TTL)
+            await redis_client.set(f"worker:{WORKER_ID}", str(len(active)), ex=HEARTBEAT_TTL)
+            await redis_client.zadd("workers:seen", {WORKER_ID: int(time.time() * 1000)})
             for job_id in list(active):
                 if await extend(job_id, LEASE_MS) == 0 and job_id in active:
                     print(f"[{WORKER_ID}] LOST lease on {job_id}", flush=True)

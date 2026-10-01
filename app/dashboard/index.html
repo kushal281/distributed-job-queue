@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Queue</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --text:#e6e8ee; --muted:#8b93a5;
+          --ok:#3ecf8e; --warn:#f5a623; --bad:#ef5350; --info:#5b9cf5; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:24px 0 8px; }
+  .muted { color:var(--muted); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .card b { display:block; font-size:26px; }
+  .wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); }
+  th, td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; }
+  tr:last-child td { border-bottom:none; }
+  .succeeded, .alive { color:var(--ok); } .running { color:var(--info); }
+  .queued, .delayed { color:var(--warn); } .dead { color:var(--bad); }
+  button { background:#252a35; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:3px 10px; cursor:pointer; }
+</style>
+</head>
+<body>
+<h1>Job Queue</h1>
+<div class="muted" id="updated">loading...</div>
+
+<h2>Queue depth</h2>
+<div class="cards">
+  <div class="card"><span class="muted">ready</span><b id="ready">-</b></div>
+  <div class="card"><span class="muted">delayed (backoff)</span><b id="delayed">-</b></div>
+  <div class="card"><span class="muted">processing (leased)</span><b id="processing">-</b></div>
+  <div class="card"><span class="muted">dead (DLQ)</span><b id="dlq">-</b></div>
+</div>
+<p class="muted" id="totals"></p>
+
+<h2>Workers</h2>
+<div class="wrap"><table>
+  <thead><tr><th>worker</th><th>status</th><th>running jobs</th><th>last heartbeat</th></tr></thead>
+  <tbody id="workers"></tbody>
+</table></div>
+
+<h2>Recent jobs</h2>
+<div class="wrap"><table>
+  <thead><tr><th>id</th><th>type</th><th>status</th><th>prio</th><th>attempts</th><th>last error</th></tr></thead>
+  <tbody id="jobs"></tbody>
+</table></div>
+
+<h2>Dead-letter queue</h2>
+<div class="wrap"><table>
+  <thead><tr><th>id</th><th>type</th><th>last error</th><th></th></tr></thead>
+  <tbody id="dead"></tbody>
+</table></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const get = async p => { const r = await fetch(p); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); };
+const empty = (cols, msg) => `<tr><td colspan="${cols}" class="muted">${msg}</td></tr>`;
+
+async function refresh() {
+  try {
+    const [stats, workers, jobs, dlq] =
+      await Promise.all([get("/stats"), get("/workers"), get("/jobs?limit=15"), get("/dlq?limit=10")]);
+
+    $("ready").textContent = stats.queue.ready;
+    $("delayed").textContent = stats.queue.delayed;
+    $("processing").textContent = stats.queue.processing;
+    $("dlq").textContent = stats.dlq;
+    $("totals").textContent = Object.entries(stats.jobs).map(([k, v]) => `${k} ${v}`).join("  ·  ");
+
+    $("workers").innerHTML = workers.length ? workers.map(w => `<tr>
+      <td>${esc(w.id)}</td><td class="${w.status}">${w.status}</td>
+      <td>${w.current_jobs}</td><td>${(w.last_heartbeat_ms_ago / 1000).toFixed(0)}s ago</td></tr>`).join("")
+      : empty(4, "no workers seen yet");
+
+    $("jobs").innerHTML = jobs.length ? jobs.map(j => `<tr>
+      <td>${esc(j.id.slice(0, 8))}</td><td>${esc(j.type)}</td><td class="${j.status}">${j.status}</td>
+      <td>${j.priority}</td><td>${j.attempts}/${j.max_attempts}</td>
+      <td class="muted">${esc((j.last_error || "").slice(0, 60))}</td></tr>`).join("")
+      : empty(6, "no jobs yet");
+
+    $("dead").innerHTML = dlq.length ? dlq.map(j => `<tr>
+      <td>${esc(j.id.slice(0, 8))}</td><td>${esc(j.type)}</td>
+      <td class="muted">${esc((j.last_error || "").slice(0, 60))}</td>
+      <td><button data-retry="${esc(j.id)}">retry</button></td></tr>`).join("")
+      : empty(4, "empty");
+
+    $("updated").textContent = "updated " + new Date().toLocaleTimeString() + " · refreshes every 2s";
+  } catch (e) {
+    $("updated").textContent = "error: " + e.message;
+  }
+}
+
+document.addEventListener("click", async e => {
+  const id = e.target.dataset.retry;
+  if (id) { await fetch(`/jobs/${id}/retry`, { method: "POST" }); refresh(); }
+});
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
