@@ -1,0 +1,34 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  COMPOSE_PROJECT_NAME: job-queue
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start api, redis, postgres (no workers, tests wipe queue keys)
+        run: docker compose up -d --build --wait redis postgres api
+
+      - name: Unit and integration tests
+        run: docker compose exec -T api python -m pytest -q
+
+      - name: Chaos test (kill a worker mid-run)
+        run: |
+          docker compose up -d --scale worker=3 --wait
+          python3 tests/chaos_kill_worker.py
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
