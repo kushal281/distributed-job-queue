@@ -1,6 +1,6 @@
 # Distributed Job Queue
 
-![CI](https://github.com/<your-username>/distributed-job-queue/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/kushal281/distributed-job-queue/actions/workflows/ci.yml/badge.svg)
 
 A job queue (think a small Celery or BullMQ) built with FastAPI, Redis and PostgreSQL. Clients submit jobs over a REST API, and multiple worker processes execute them with priorities, retries with exponential backoff, a dead-letter queue, idempotent submission, and **automatic recovery of jobs held by crashed workers**.
 
