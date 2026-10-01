@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Start api, redis, postgres (no workers, tests wipe queue keys)
         run: docker compose up -d --build --wait redis postgres api
@@ -22,7 +22,7 @@ jobs:
 
       - name: Chaos test (kill a worker mid-run)
         run: |
-          docker compose up -d --scale worker=3 --wait
+          docker compose up -d --no-recreate --scale worker=3 --wait
           python3 tests/chaos_kill_worker.py
 
       - name: Logs on failure

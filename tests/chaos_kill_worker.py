@@ -51,12 +51,24 @@ def fail(msg: str):
     sys.exit(1)
 
 
+def wait_for_api(timeout=90):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            api("GET", "/health")
+            return
+        except Exception:
+            time.sleep(2)
+    fail("API did not become ready")
+
+
 def main():
     workers = running_workers()
     if len(workers) < 2:
         fail(f"need at least 2 running workers, found {workers}")
     print(f"workers: {workers}")
-
+    
+    wait_for_api()
     ids = [
         api("POST", "/jobs", {"type": "sleep", "payload": {"seconds": JOB_SECONDS}})["id"]
         for _ in range(N_JOBS)
